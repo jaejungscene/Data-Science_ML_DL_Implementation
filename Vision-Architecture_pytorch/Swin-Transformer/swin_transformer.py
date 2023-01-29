@@ -549,26 +549,38 @@ class WindowAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
+        print(">>>>>> x:", x.shape)
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        print(">>>>>> qkv:", qkv.shape)
         q, k, v = qkv.unbind(0)  # make torchscript happy (cannot use tensor as tuple)
+        print(">>>>>> q:", q.shape)
+        print(">>>>>> k:", k.shape)
+        print(">>>>>> v:", v.shape)
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
         attn = attn + self._get_rel_pos_bias()
+        print(">>>>>> attn:", attn.shape)
 
         if mask is not None:
             num_win = mask.shape[0]
             attn = attn.view(B_ // num_win, num_win, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            print(">>>>>> attn:", attn.shape)
             attn = attn.view(-1, self.num_heads, N, N)
+            print(">>>>>> attn:", attn.shape)
             attn = self.softmax(attn)
+            print(">>>>>> attn:", attn.shape)
         else:
             attn = self.softmax(attn)
 
         attn = self.attn_drop(attn)
+        print(">>>>>> attn:", attn.shape)
 
         x = (attn @ v).transpose(1, 2).reshape(B_, N, -1)
+        print(">>>>>> x:", x.shape)
         x = self.proj(x)
         x = self.proj_drop(x)
+        print(">>>>>> x:", x.shape)
         return x
 
 
@@ -632,8 +644,13 @@ class SwinTransformerBlock(nn.Module):
                     cnt += 1
             mask_windows = window_partition(img_mask, self.window_size)  # num_win, window_size, window_size, 1
             mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
-            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2) # broad casting = 대칭 행렬(symmetric matrix)
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+            # attn_mask.shape -> (H//7)^(windows_size), (windows_size)^2, (windows_size)^2
+            print('-'*50)
+            print(f"H, W: {H}, {W}")
+            print(attn_mask.shape)
+            print('-'*50)
         else:
             attn_mask = None
 
